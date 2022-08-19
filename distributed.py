@@ -100,6 +100,7 @@ def apply_gradient_allreduce(module):
     for p in module.state_dict().values():
         if not torch.is_tensor(p):
             continue
+        p = p.contiguous()  # otherwise throws not contiguous error
         dist.broadcast(p, 0)
 
     def allreduce_params():
@@ -159,8 +160,11 @@ def main(config, stdout_dir, args_str):
     workers = []
 
     for i in range(num_gpus):
+        print("worker", i)
         args_list[-2] = '--rank={}'.format(i)
-        stdout = None if i == 0 else open(
+        # stdout = None if i == 0 else open(
+        #     os.path.join(stdout_dir, "GPU_{}.log".format(i)), "w")
+        stdout = sys.stdout if i == 0 else open(
             os.path.join(stdout_dir, "GPU_{}.log".format(i)), "w")
         print(args_list)
         p = subprocess.Popen([str(sys.executable)]+args_list, stdout=stdout)
@@ -181,4 +185,5 @@ if __name__ == '__main__':
         help='double quoted string with space separated key value pairs')
 
     args = parser.parse_args()
+    print("running main")
     main(args.config, args.stdout_dir, args.args_str)

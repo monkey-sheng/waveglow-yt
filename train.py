@@ -41,13 +41,14 @@ from mel2samp import Mel2Samp
 def load_checkpoint(checkpoint_path, model, optimizer):
     assert os.path.isfile(checkpoint_path)
     checkpoint_dict = torch.load(checkpoint_path, map_location='cpu')
-    iteration = checkpoint_dict['iteration']
-    optimizer.load_state_dict(checkpoint_dict['optimizer'])
+    # iteration = checkpoint_dict['iteration']  # no such key
+    # optimizer.load_state_dict(checkpoint_dict['optimizer'])  # no such key
     model_for_loading = checkpoint_dict['model']
     model.load_state_dict(model_for_loading.state_dict())
-    print("Loaded checkpoint '{}' (iteration {})" .format(
-          checkpoint_path, iteration))
-    return model, optimizer, iteration
+    # print("Loaded checkpoint '{}' (iteration {})" .format(
+          # checkpoint_path, iteration))
+    print("loaded checkpoint", checkpoint_path)
+    return model, optimizer, 0  # return iteration which is unkown (0)
 
 def save_checkpoint(model, optimizer, learning_rate, iteration, filepath):
     print("Saving model and optimizer state at iteration {} to {}".format(
@@ -94,11 +95,12 @@ def train(num_gpus, rank, group_name, output_directory, epochs, learning_rate,
     # =====START: ADDED FOR DISTRIBUTED======
     train_sampler = DistributedSampler(trainset) if num_gpus > 1 else None
     # =====END:   ADDED FOR DISTRIBUTED======
-    train_loader = DataLoader(trainset, num_workers=1, shuffle=False,
+    train_loader = DataLoader(trainset, num_workers=0, shuffle=False,
                               sampler=train_sampler,
                               batch_size=batch_size,
                               pin_memory=False,
                               drop_last=True)
+    print("data loader finished, batch size", batch_size)
 
     # Get shared output_directory ready
     if rank == 0:
@@ -125,6 +127,8 @@ def train(num_gpus, rank, group_name, output_directory, epochs, learning_rate,
             outputs = model((mel, audio))
 
             loss = criterion(outputs)
+            if iteration % 100 == 0:
+                print("iteration", iteration, "loss", loss, flush=True)
             if num_gpus > 1:
                 reduced_loss = reduce_tensor(loss.data, num_gpus).item()
             else:
@@ -138,7 +142,8 @@ def train(num_gpus, rank, group_name, output_directory, epochs, learning_rate,
 
             optimizer.step()
 
-            print("{}:\t{:.9f}".format(iteration, reduced_loss))
+            if iteration % 200 == 0:
+                print("iteration {} reduced loss:\t{:.9f}".format(iteration, reduced_loss))
             if with_tensorboard and rank == 0:
                 logger.add_scalar('training_loss', reduced_loss, i + len(train_loader) * epoch)
 
@@ -148,8 +153,9 @@ def train(num_gpus, rank, group_name, output_directory, epochs, learning_rate,
                         output_directory, iteration)
                     save_checkpoint(model, optimizer, learning_rate, iteration,
                                     checkpoint_path)
-
             iteration += 1
+        if epoch % 3 == 0:
+            print("epoch finished", epoch)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

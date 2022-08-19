@@ -33,7 +33,8 @@ from denoiser import Denoiser
 
 def main(mel_files, waveglow_path, sigma, output_dir, sampling_rate, is_fp16,
          denoiser_strength):
-    mel_files = files_to_list(mel_files)
+    ###mel_files = files_to_list(mel_files)
+    mel_files = [mel_files] # nah, just pass in one file name
     waveglow = torch.load(waveglow_path)['model']
     waveglow = waveglow.remove_weightnorm(waveglow)
     waveglow.cuda().eval()
